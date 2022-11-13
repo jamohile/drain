@@ -71,24 +71,38 @@ class Experiment:
 
 				# Control flags for Gem5.
 				flags = [
-					"--topology=irregularMesh_XY",
 					"--network=garnet2.0",
-					"--router-latency=1",
-					"--spin=1",
-					"--spin-mult=1",
-					"--uTurn-crossbar=1",
-					"--inj-vnet=0",
-					"--synthetic=" 						+ self.benchmark,
-					"--spin-file=" 						+ self.network_config.spin_config,
-					"--conf-file=" 						+ self.network_config.mesh_config,
-					"--sim-cycles=%d" 				% cycles,
+
+					# Physical network topology.
+					"--topology=irregularMesh_XY",
 					"--num-cpus=%d" 					% self.network_config.num_cores,
 					"--num-dirs=%d"  					% self.network_config.num_cores,
 					"--mesh-rows=%d"  				% self.network_config.num_rows,
-					"--spin-freq=%d" 					% self.network_config.spin_freq,
+					"--conf-file=" 						+ self.network_config.mesh_config,
+					
+					# Network-level configuration.
+					"--router-latency=1",
+					"--uTurn-crossbar=1",
 					"--vcs-per-vnet=%d" 			% self.network_config.virtual_channels,
-					"--injectionrate=%1.2f"		% injection_rate,
 					"--routing-algorithm=%d" 	% self.network_config.routing_algorithm.key,
+
+					# Basic simulation behaviour.
+					# The simulated traffic to use, and the length of that traffic to simulate.
+					"--synthetic=" 						+ self.benchmark,
+					"--sim-cycles=%d" 				% cycles,
+
+					# Drain is built on top of SPIN.
+					# Enable spin every freq cycles.
+					"--spin=1",
+					"--spin-freq=%d" 					% self.network_config.spin_freq,
+					# Each spin epoch, this many spins will be performed.
+					"--spin-mult=1",
+					"--spin-file=" 						+ self.network_config.spin_config,
+
+					# "Indepedent" variable being tested.
+					# As we change this injection rate, we should see a change in the latency as the network approaches saturation.
+					"--inj-vnet=0",
+					"--injectionrate=%1.2f"		% injection_rate,
 				]
 
 				output_dir = os.path.join(
@@ -102,6 +116,8 @@ class Experiment:
 				)
 
 				# Run simulator with provided configuration.
+				# The passed configs/ file is the actual gem5 network simulation that will be used,
+				# consuming the configuration and traffic we configured above.
 				subprocess.call([binary, "-d", output_dir, "configs/example/garnet_synth_traffic.py"] + flags)
 
 				# Scan through the simulator's output, to specificially find the average flit latency.
@@ -120,12 +136,16 @@ class Experiment:
 			"measurements": [m.toDict() for m in self.measurements]
 		}
 
+# A number of different routing algorithms are supported.
+# These correspond to the settings used within Gem5.
 routing_algorithms = {
 	"ADAPT_RAND_": RoutingAlgorithm(0, "ADAPT_RAND_"),
 	"UP_DN_": RoutingAlgorithm(1, "UP_DN_"),
 	"Escape_VC_UP_DN_": RoutingAlgorithm(2, "Escape_VC_UP_DN_"),
 }
 
+# Entirely user-set network configurations to test against.
+# These can be modified as required..
 network_configurations = [
 	NetworkConfiguration(
 		num_cores=64,
@@ -149,6 +169,8 @@ network_configurations = [
 	)
 ]
 
+# Specific Gem5 benchmarks we are interested in testing against.
+# These can be changed, but must be valid.
 benchmarks=[ "bit_rotation", "shuffle", "transpose" ]
 
 def main():
@@ -165,10 +187,11 @@ def main():
 		for benchmark in benchmarks:
 			experiments.append(Experiment(network_config, benchmark))
 	
-	# Run all experiments, then print results.
+	# Run all experiments
 	for experiment in experiments:
 		experiment.run(maximum_packet_latency=200.0, cycles=1e5, root_output_dir="./results")
 
+	# Print all results.
 	for experiment in experiments:
 		print(json.dumps(experiment.toDict(), indent=2))
 
