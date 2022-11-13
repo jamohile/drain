@@ -1,25 +1,39 @@
 import os
 import subprocess
+
 # import pdb; pdb.set_trace()
 # first compile then run
 binary = 'build/Garnet_standalone/gem5.opt'
-os.system("scons -j15 {}".format(binary))
+# os.system("scons -j15 {}".format(binary))
 
 
 bench_caps=[ "BIT_ROTATION", "SHUFFLE", "TRANSPOSE" ]
 bench=[ "bit_rotation", "shuffle", "transpose" ]
-file= [ '64_nodes-connectivity_matrix_0-links_removed_0.txt', '256_nodes-connectivity_matrix_0-links_removed_0.txt' ]
-# file= [ '256_nodes-connectivity_matrix_0-links_removed_0.txt' ]
-# bench_caps=[ "BIT_ROTATION" ]
-# bench=[ "bit_rotation" ]
-
 routing_algorithm=["ADAPT_RAND_", "UP_DN_", "Escape_VC_UP_DN_"]
 
-num_cores = [64, 256]
-num_rows = [8, 16]
+# A single network topology configuration.
+class NetworkConfiguration:
+	def __init__(self, num_cores, num_rows, mesh_config, spin_config):
+		self.num_cores = num_cores
+		self.num_rows = num_rows
+		self.mesh_config = mesh_config
+		self.spin_config = spin_config
 
-# num_cores = [256]
-# num_rows = [16]
+network_configurations = [
+	NetworkConfiguration(
+		num_cores=64,
+		num_rows=8,
+		mesh_config="64_nodes-connectivity_matrix_0-links_removed_0.txt",
+		spin_config="spin_configs/SR_64_nodes-connectivity_matrix_0-links_removed_0.txt"
+	),
+
+	NetworkConfiguration(
+		num_cores=256,
+    num_rows=16,
+		mesh_config="256_nodes-connectivity_matrix_0-links_removed_0.txt",
+		spin_config="spin_configs/256_nodes-connectivity_matrix_0-links_removed_0.txt"
+	)
+]
 
 os.system('rm -rf ./results')
 os.system('mkdir results')
@@ -32,9 +46,9 @@ vc_ = 4
 rout_ = 0
 spin_freq = 1024
 
-for c in range(len(num_cores)):
+for network_config in network_configurations:
 	for b in range(len(bench)):
-		print ("cores: {2:d} b: {0:s} vc-{1:d}".format(bench_caps[b], vc_, num_cores[c]))
+		print ("cores: {2:d} b: {0:s} vc-{1:d}".format(bench_caps[b], vc_, network_config.num_cores))
 		pkt_lat = 0
 		injection_rate = 0.02
 
@@ -45,7 +59,7 @@ for c in range(len(num_cores)):
 			# Location to output the result of this specific run.
 			output_dir = "/".join([
 				out_dir,
-				str(num_cores[c]),
+				str(network_config.num_cores),
 				routing_algorithm[rout_],
 				bench_caps[b],
 				"freq-" + str(spin_freq),
@@ -62,12 +76,12 @@ for c in range(len(num_cores)):
 				"--spin-mult=1",
 				"--uTurn-crossbar=1",
 				"--inj-vnet=0",
-				"--num-cpus=" + str(num_cores[c]),
-				"--num-dirs=" + str(num_cores[c]),
-				"--mesh-rows=" + str(num_rows[c]),
+				"--num-cpus=" + str(network_config.num_cores),
+				"--num-dirs=" + str(network_config.num_cores),
+				"--mesh-rows=" + str(network_config.num_rows),
 				"--sim-cycles=" + str(cycles),
-				"--conf-file=" + file[c],
-				"--spin-file=spin_configs/SR_" + file[c],
+				"--conf-file=" + network_config.mesh_config,
+				"--spin-file=" + network_config.spin_config,
 				"--spin-freq=" + str(spin_freq),
 				"--vcs-per-vnet=" + str(vc_),
 				"--injectionrate=" + formatted_injection_rate,
@@ -99,13 +113,13 @@ for c in range(len(num_cores)):
 
 
 ############### Extract results here ###############
-for c in range(len(num_cores)):
+for network_config in network_configurations:
 	for b in range(len(bench)):
-		print ("cores: {} benchmark: {} vc-{}".format(num_cores[c], bench_caps[b], vc_))
+		print ("cores: {} benchmark: {} vc-{}".format(network_config.num_cores, bench_caps[b], vc_))
 		pkt_lat = 0
 		injection_rate = 0.02
 		while (pkt_lat < 200.00):
-			output_dir= ("{0:s}/{1:d}/{3:s}/{2:s}/freq-{6:d}/vc-{4:d}/inj-{5:1.2f}".format(out_dir, num_cores[c],  bench_caps[b], routing_algorithm[rout_], vc_, injection_rate, spin_freq))
+			output_dir= ("{0:s}/{1:d}/{3:s}/{2:s}/freq-{6:d}/vc-{4:d}/inj-{5:1.2f}".format(out_dir, network_config.num_cores,  bench_caps[b], routing_algorithm[rout_], vc_, injection_rate, spin_freq))
 
 			if(os.path.exists(output_dir)):
 				packet_latency = subprocess.check_output("grep -nri average_flit_latency  {0:s}  | sed 's/.*system.ruby.network.average_flit_latency\s*//'".format(output_dir), shell=True)
