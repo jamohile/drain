@@ -7,8 +7,7 @@ binary = 'build/Garnet_standalone/gem5.opt'
 # os.system("scons -j15 {}".format(binary))
 
 
-bench_caps=[ "BIT_ROTATION", "SHUFFLE", "TRANSPOSE" ]
-routing_algorithm=["ADAPT_RAND_", "UP_DN_", "Escape_VC_UP_DN_"]
+routing_algorithms=["ADAPT_RAND_", "UP_DN_", "Escape_VC_UP_DN_"]
 
 # A single network topology configuration.
 class NetworkConfiguration:
@@ -23,29 +22,29 @@ network_configurations = [
 		num_cores=64,
 		num_rows=8,
 		mesh_config="64_nodes-connectivity_matrix_0-links_removed_0.txt",
-		spin_config="spin_configs/SR_64_nodes-connectivity_matrix_0-links_removed_0.txt"
+		spin_config="spin_configs/SR_64_nodes-connectivity_matrix_0-links_removed_0.txt",
 	),
 
 	NetworkConfiguration(
 		num_cores=256,
     num_rows=16,
 		mesh_config="256_nodes-connectivity_matrix_0-links_removed_0.txt",
-		spin_config="spin_configs/256_nodes-connectivity_matrix_0-links_removed_0.txt"
+		spin_config="spin_configs/256_nodes-connectivity_matrix_0-links_removed_0.txt",
 	)
 ]
 
 benchmarks=[ "bit_rotation", "shuffle", "transpose" ]
-
-os.system('rm -rf ./results')
-os.system('mkdir results')
 
 out_dir = './results'
 cycles = 100000
 vnet = 0
 tr = 1
 vc_ = 4
-rout_ = 0
+routing_algorithm_index = 0
 spin_freq = 1024
+
+os.system('rm -rf ./results')
+os.system('mkdir results')
 
 for network_config in network_configurations:
 	for benchmark in benchmarks:
@@ -61,7 +60,7 @@ for network_config in network_configurations:
 			output_dir = "/".join([
 				out_dir,
 				str(network_config.num_cores),
-				routing_algorithm[rout_],
+				routing_algorithms[routing_algorithm_index],
 				benchmark.upper(),
 				"freq-" + str(spin_freq),
 				"vc-" + str(vc_),
@@ -87,7 +86,7 @@ for network_config in network_configurations:
 				"--vcs-per-vnet=" + str(vc_),
 				"--injectionrate=" + formatted_injection_rate,
 				"--synthetic=" + benchmark,
-				"--routing-algorithm=" + str(rout_)
+				"--routing-algorithm=" + str(routing_algorithm_index),
 			])
 
 			############ gem5 command-line ###########
@@ -120,7 +119,7 @@ for network_config in network_configurations:
 		pkt_lat = 0
 		injection_rate = 0.02
 		while (pkt_lat < 200.00):
-			output_dir= ("{0:s}/{1:d}/{3:s}/{2:s}/freq-{6:d}/vc-{4:d}/inj-{5:1.2f}".format(out_dir, network_config.num_cores,  benchmark.upper(), routing_algorithm[rout_], vc_, injection_rate, spin_freq))
+			output_dir= ("{0:s}/{1:d}/{3:s}/{2:s}/freq-{6:d}/vc-{4:d}/inj-{5:1.2f}".format(out_dir, network_config.num_cores,  benchmark.upper(), routing_algorithms[routing_algorithm_index], vc_, injection_rate, spin_freq))
 
 			if(os.path.exists(output_dir)):
 				packet_latency = subprocess.check_output("grep -nri average_flit_latency  {0:s}  | sed 's/.*system.ruby.network.average_flit_latency\s*//'".format(output_dir), shell=True)
