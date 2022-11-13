@@ -61,12 +61,12 @@ os.system('mkdir results')
 def get_output_dir(network_config, benchmark, injection_rate):
 	path = [
 		out_dir,
-		str(network_config.num_cores),
+		"%s" % network_config.num_cores,
 		network_config.routing_algorithm.name,
 		benchmark.upper(),
-		"freq-" + str(network_config.spin_freq),
-		"vc-" + str(network_config.virtual_channels),
-		"inj-" + str(injection_rate)
+		"freq-%d" 	% network_config.spin_freq,
+		"vc-%d" 		% network_config.virtual_channels,
+		"inj-%d" 		% injection_rate
 	]
 
 	return "/".join(path)
@@ -92,17 +92,17 @@ for network_config in network_configurations:
 				"--spin-mult=1",
 				"--uTurn-crossbar=1",
 				"--inj-vnet=0",
-				"--num-cpus=" + str(network_config.num_cores),
-				"--num-dirs=" + str(network_config.num_cores),
-				"--mesh-rows=" + str(network_config.num_rows),
-				"--sim-cycles=" + str(cycles),
-				"--conf-file=" + network_config.mesh_config,
-				"--spin-file=" + network_config.spin_config,
-				"--spin-freq=" + str(network_config.spin_freq),
-				"--vcs-per-vnet=" + str(network_config.virtual_channels),
-				"--injectionrate=" + formatted_injection_rate,
-				"--synthetic=" + benchmark,
-				"--routing-algorithm=" + str(network_config.routing_algorithm.key),
+				"--sim-cycles=%d" 					% cycles,
+				"--synthetic=" 						+ benchmark,
+				"--num-cpus=%d" 					% network_config.num_cores,
+				"--num-dirs=%d"  					% network_config.num_cores,
+				"--mesh-rows=%d"  				% network_config.num_rows,
+				"--conf-file=" 						+ network_config.mesh_config,
+				"--spin-file=" 						+ network_config.spin_config,
+				"--spin-freq=%d" 					% network_config.spin_freq,
+				"--vcs-per-vnet=%d" 			% network_config.virtual_channels,
+				"--injectionrate=" 				+ formatted_injection_rate,
+				"--routing-algorithm=%d" 	% network_config.routing_algorithm.key,
 			])
 
 			############ gem5 command-line ###########
