@@ -52,6 +52,26 @@ network_configurations = [
 
 benchmarks=[ "bit_rotation", "shuffle", "transpose" ]
 
+class Measurement:
+	def __init__(self, injection_rate, packet_latency):
+		self.injection_rate = injection_rate
+		self.packet_latency = packet_latency
+
+class Result:
+	def __init__(self, network_config, benchmark):
+		self.network_config = network_config
+		self.benchmark = benchmark
+		self.measurements = []
+	
+	def last_packet_latency(self):
+		if self.measurements:
+			return self.measurements[-1].packet_latency
+		else:
+			return 0
+	
+	def add_packet_latency(self, injection_rate, packet_latency):
+		self.measurements.append(Measurement(injection_rate, packet_latency))
+
 out_dir = './results'
 cycles = 100000
 
@@ -71,18 +91,16 @@ def get_output_dir(network_config, benchmark, injection_rate):
 
 	return "/".join(path)
 
+results = []
+
 for network_config in network_configurations:
 	for benchmark in benchmarks:
 		print ("cores: {2:d} b: {0:s} vc-{1:d}".format(benchmark.upper(), network_config.virtual_channels, network_config.num_cores))
-		pkt_lat = 0
 		injection_rate = 0.02
 
-		while(pkt_lat < 200.00):
-			# Allow pretty-print of injection rate with desired precision.
-			formatted_injection_rate = "{0:1.2f}".format(injection_rate)
+		result = Result(network_config, benchmark)
 
-			output_dir = get_output_dir(network_config, benchmark, injection_rate)
-
+		while result.last_packet_latency() < 200.0:
 			# Control flags for Gem5.
 			flags = " ".join([
 				"--topology=irregularMesh_XY",
@@ -92,20 +110,21 @@ for network_config in network_configurations:
 				"--spin-mult=1",
 				"--uTurn-crossbar=1",
 				"--inj-vnet=0",
-				"--sim-cycles=%d" 					% cycles,
 				"--synthetic=" 						+ benchmark,
+				"--spin-file=" 						+ network_config.spin_config,
+				"--conf-file=" 						+ network_config.mesh_config,
+				"--sim-cycles=%d" 				% cycles,
 				"--num-cpus=%d" 					% network_config.num_cores,
 				"--num-dirs=%d"  					% network_config.num_cores,
 				"--mesh-rows=%d"  				% network_config.num_rows,
-				"--conf-file=" 						+ network_config.mesh_config,
-				"--spin-file=" 						+ network_config.spin_config,
 				"--spin-freq=%d" 					% network_config.spin_freq,
 				"--vcs-per-vnet=%d" 			% network_config.virtual_channels,
-				"--injectionrate=" 				+ formatted_injection_rate,
+				"--injectionrate=%1.2f"		% injection_rate,
 				"--routing-algorithm=%d" 	% network_config.routing_algorithm.key,
 			])
 
-			############ gem5 command-line ###########
+			output_dir = get_output_dir(network_config, benchmark, injection_rate)
+
 			command = " ".join([
 				binary,
 				# Output
@@ -117,31 +136,21 @@ for network_config in network_configurations:
 
 			os.system(command)
 
-			############ gem5 output-directory ##############
-			print ("output_dir: %s" % (output_dir))
-
 			packet_latency = subprocess.check_output("grep -nri average_flit_latency  {0:s}  | sed 's/.*system.ruby.network.average_flit_latency\s*//'".format(output_dir), shell=True)
+			result.add_packet_latency(injection_rate, packet_latency)
 
-			# print packet_latency
-			pkt_lat = float(packet_latency)
-			print ("injection_rate={0:s} \t Packet Latency: {1:f} ".format(formatted_injection_rate, pkt_lat))
 			injection_rate+=0.02
 
+# Print all results.
+for result in results:
+	print(" ".join([
+		"cores: %d" 	% result.network_config.num_cores,
+		"benchmark: " + result.benchmark.upper(),
+		"vc-%d" 			% result.network_config.virtual_channels
+	]))
 
-############### Extract results here ###############
-for network_config in network_configurations:
-	for benchmark in benchmarks:
-		print ("cores: {} benchmark: {} vc-{}".format(network_config.num_cores, benchmark.upper(), network_config.virtual_channels))
-		pkt_lat = 0
-		injection_rate = 0.02
-		while (pkt_lat < 200.00):
-			output_dir = get_output_dir(network_config, benchmark, injection_rate)
-
-			if(os.path.exists(output_dir)):
-				packet_latency = subprocess.check_output("grep -nri average_flit_latency  {0:s}  | sed 's/.*system.ruby.network.average_flit_latency\s*//'".format(output_dir), shell=True)
-				pkt_lat = float(packet_latency)
-				print ("injection_rate={1:1.2f} \t Packet Latency: {0:f} ".format(pkt_lat, injection_rate))
-				injection_rate+=0.02
-
-			else:
-				pkt_lat = 1000
+	for measurement in result.measurements:
+		print(" ".join([
+			"injection_rate: %1.2f" % measurement.injection_rate,
+			"packet_latency: %f" % measurement.packet_latency,
+		]))
