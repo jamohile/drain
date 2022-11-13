@@ -4,6 +4,8 @@ import os
 from struct import pack
 import subprocess
 import json
+import multiprocessing
+import signal
 
 binary = 'build/Garnet_standalone/gem5.opt'
 
@@ -110,9 +112,9 @@ class Experiment:
 					"%s" % self.network_config.num_cores,
 					self.network_config.routing_algorithm.name,
 					self.benchmark.upper(),
-					"freq-%d" 	% self.network_config.spin_freq,
-					"vc-%d" 		% self.network_config.virtual_channels,
-					"inj-%d" 		% injection_rate
+					"freq-%d" 			% self.network_config.spin_freq,
+					"vc-%d" 				% self.network_config.virtual_channels,
+					"inj-%1.2f" 		% injection_rate
 				)
 
 				# Run simulator with provided configuration.
@@ -173,9 +175,13 @@ network_configurations = [
 # These can be changed, but must be valid.
 benchmarks=[ "bit_rotation", "shuffle", "transpose" ]
 
+def run_experiment(experiment):
+	experiment.run(maximum_packet_latency=200.0, cycles=1e5, root_output_dir="./results")
+	return experiment
+
 def main():
 	# Build simulator.
-	os.system("scons -j15 {}".format(binary))
+	# os.system("scons -j15 {}".format(binary))
 
 	# Clean up any leftover outputs.
 	subprocess.call('rm -rf ./results', shell=True)
@@ -187,12 +193,16 @@ def main():
 		for benchmark in benchmarks:
 			experiments.append(Experiment(network_config, benchmark))
 	
-	# Run all experiments
-	for experiment in experiments:
-		experiment.run(maximum_packet_latency=200.0, cycles=1e5, root_output_dir="./results")
+	# Run all experiments using multithreading.
+	# Note, this is a bit messy, but it is up to the experiments to make sure they do not write to the same locations.
+
+	pool = multiprocessing.Pool()
+	results = pool.map(run_experiment, experiments)
+	print("Done all experiments.")
+
+	print(results)
 
 	# Print all results.
-	for experiment in experiments:
-		print(json.dumps(experiment.toDict(), indent=2))
+	print(json.dumps([experiment.toDict() for experiment in experiments], indent=2))
 
 main()
