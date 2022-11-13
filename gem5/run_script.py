@@ -4,7 +4,7 @@ import subprocess
 # import pdb; pdb.set_trace()
 # first compile then run
 binary = 'build/Garnet_standalone/gem5.opt'
-# os.system("scons -j15 {}".format(binary))
+os.system("scons -j15 {}".format(binary))
 
 class RoutingAlgorithm:
 	def __init__(self, key, name):
@@ -58,6 +58,19 @@ cycles = 100000
 os.system('rm -rf ./results')
 os.system('mkdir results')
 
+def get_output_dir(network_config, benchmark, injection_rate):
+	path = [
+		out_dir,
+		str(network_config.num_cores),
+		network_config.routing_algorithm.name,
+		benchmark.upper(),
+		"freq-" + str(network_config.spin_freq),
+		"vc-" + str(network_config.virtual_channels),
+		"inj-" + str(injection_rate)
+	]
+
+	return "/".join(path)
+
 for network_config in network_configurations:
 	for benchmark in benchmarks:
 		print ("cores: {2:d} b: {0:s} vc-{1:d}".format(benchmark.upper(), network_config.virtual_channels, network_config.num_cores))
@@ -68,16 +81,7 @@ for network_config in network_configurations:
 			# Allow pretty-print of injection rate with desired precision.
 			formatted_injection_rate = "{0:1.2f}".format(injection_rate)
 
-			# Location to output the result of this specific run.
-			output_dir = "/".join([
-				out_dir,
-				str(network_config.num_cores),
-				network_config.routing_algorithm.name,
-				benchmark.upper(),
-				"freq-" + str(network_config.spin_freq),
-				"vc-" + str(network_config.virtual_channels),
-				"inj-" + str(injection_rate)
-			])
+			output_dir = get_output_dir(network_config, benchmark, injection_rate)
 
 			# Control flags for Gem5.
 			flags = " ".join([
@@ -114,7 +118,7 @@ for network_config in network_configurations:
 			os.system(command)
 
 			############ gem5 output-directory ##############
-			print ("output_dir: %s" %(output_dir))
+			print ("output_dir: %s" % (output_dir))
 
 			packet_latency = subprocess.check_output("grep -nri average_flit_latency  {0:s}  | sed 's/.*system.ruby.network.average_flit_latency\s*//'".format(output_dir), shell=True)
 
@@ -131,7 +135,7 @@ for network_config in network_configurations:
 		pkt_lat = 0
 		injection_rate = 0.02
 		while (pkt_lat < 200.00):
-			output_dir= ("{0:s}/{1:d}/{3:s}/{2:s}/freq-{6:d}/vc-{4:d}/inj-{5:1.2f}".format(out_dir, network_config.num_cores,  benchmark.upper(), network_config.routing_algorithm.name, network_config.virtual_channels, injection_rate, spin_freq))
+			output_dir = get_output_dir(network_config, benchmark, injection_rate)
 
 			if(os.path.exists(output_dir)):
 				packet_latency = subprocess.check_output("grep -nri average_flit_latency  {0:s}  | sed 's/.*system.ruby.network.average_flit_latency\s*//'".format(output_dir), shell=True)
