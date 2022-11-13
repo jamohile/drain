@@ -37,23 +37,64 @@ for c in range(len(num_cores)):
 		print ("cores: {2:d} b: {0:s} vc-{1:d}".format(bench_caps[b], vc_, num_cores[c]))
 		pkt_lat = 0
 		injection_rate = 0.02
-		while(pkt_lat < 200.00 ):
+
+		while(pkt_lat < 200.00):
+			# Allow pretty-print of injection rate with desired precision.
+			formatted_injection_rate = "{0:1.2f}".format(injection_rate)
+
+			# Location to output the result of this specific run.
+			output_dir = "/".join([
+				out_dir,
+				str(num_cores[c]),
+				routing_algorithm[rout_],
+				bench_caps[b],
+				"freq-" + str(spin_freq),
+				"vc-" + str(vc_),
+				"inj-" + str(injection_rate)
+			])
+
+			# Control flags for Gem5.
+			flags = " ".join([
+				"--topology=irregularMesh_XY",
+				"--network=garnet2.0",
+				"--router-latency=1",
+				"--spin=1",
+				"--spin-mult=1",
+				"--uTurn-crossbar=1",
+				"--inj-vnet=0",
+				"--num-cpus=" + str(num_cores[c]),
+				"--num-dirs=" + str(num_cores[c]),
+				"--mesh-rows=" + str(num_rows[c]),
+				"--sim-cycles=" + str(cycles),
+				"--conf-file=" + file[c],
+				"--spin-file=spin_configs/SR_" + file[c],
+				"--spin-freq=" + str(spin_freq),
+				"--vcs-per-vnet=" + str(vc_),
+				"--injectionrate=" + formatted_injection_rate,
+				"--synthetic=" + bench[b],
+				"--routing-algorithm=" + str(rout_)
+			])
+
 			############ gem5 command-line ###########
-			os.system("{0:s} -d {1:s}/{2:d}/{4:s}/{3:s}/freq-{7:d}/vc-{5:d}/inj-{6:1.2f} configs/example/garnet_synth_traffic.py --topology=irregularMesh_XY --num-cpus={2:d} --num-dirs={2:d} --mesh-rows={8:d} --network=garnet2.0 --router-latency=1 --sim-cycles={9:d} --spin=1 --conf-file={10:s} --spin-file=spin_configs/SR_{10:s} --spin-freq={7:d} --spin-mult=1 --uTurn-crossbar=1 --inj-vnet=0 --vcs-per-vnet={5:d} --injectionrate={6:1.2f} --synthetic={11:s} --routing-algorithm={12:d} ".format(binary, out_dir, num_cores[c],  bench_caps[b], routing_algorithm[rout_], vc_, injection_rate, spin_freq, num_rows[c], cycles, file[c], bench[b], rout_ ))
+			command = " ".join([
+				binary,
+				# Output
+				"-d", output_dir,
+				# Input traffic
+				"configs/example/garnet_synth_traffic.py",
+				flags
+			])
 
-
-			# convert flot to string with required precision
-			inj_rate="{:1.2f}".format(injection_rate)
+			os.system(command)
 
 			############ gem5 output-directory ##############
-			output_dir= ("{0:s}/{1:d}/{3:s}/{2:s}/freq-{6:d}/vc-{4:d}/inj-{5:1.2f}".format(out_dir, num_cores[c],  bench_caps[b], routing_algorithm[rout_], vc_, injection_rate, spin_freq))
 			print ("output_dir: %s" %(output_dir))
 
 			packet_latency = subprocess.check_output("grep -nri average_flit_latency  {0:s}  | sed 's/.*system.ruby.network.average_flit_latency\s*//'".format(output_dir), shell=True)
+
 			# print packet_latency
 			pkt_lat = float(packet_latency)
-
-			print ("injection_rate={1:1.2f} \t Packet Latency: {0:f} ".format(pkt_lat, injection_rate))
+			print ("injection_rate={0:s} \t Packet Latency: {1:f} ".format(formatted_injection_rate, pkt_lat))
 			injection_rate+=0.02
 
 
