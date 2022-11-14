@@ -201,13 +201,13 @@ class Experiment:
     # Until we are done this experiment, keep dispatching workers.
 		while not done.is_set():
 			workers.acquire()
+			lock.acquire()
 
 			# It's possible that in the time it took us to acquire a worker, the experiment finished.
 			if done.is_set():
 				workers.release()
+				lock.release()
 				break
-
-			lock.acquire()
 
 			last_injection_rate += 0.02
 			injection_rate = last_injection_rate
