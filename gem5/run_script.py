@@ -7,12 +7,15 @@ import subprocess
 import json
 import multiprocessing
 import signal
+import time
 
 BINARY = 'build/Garnet_standalone/gem5.opt'
 SIMULATOR = 'configs/example/garnet_synth_traffic.py'
 OUTPUT = "./result"
+
 LOGS = os.path.join(OUTPUT, "log.log")
 RESULTS = os.path.join(OUTPUT, "results")
+JSON = os.path.join(OUTPUT, "output.json")
 
 log_lock = multiprocessing.Lock()
 
@@ -250,7 +253,7 @@ class Experiment:
 	def toDict(self):
 		return {
 			"cores": self.network_config.num_cores,
-			"benchmark": self.benchmark.upper(),
+			"benchmark": self.software_config.benchmark.upper(),
 			"vc": self.network_config.virtual_channels,
 		}
 	
@@ -322,11 +325,12 @@ def main():
 	# Run all experiments using multithreading.
 	# Note: this assumes that experiments do not try to write to the same location, or otherwise break independence.
 	log("Starting experiments.")
+	start_time = time.time()
 
 	pool = multiprocessing.Pool()
 	results = pool.map(run_experiment, experiments)
 
-	log("Done all experiments.")
+	log("Done all experiments after %s seconds." % (time.time() - start_time))
 
 	# Print all results.
 	results_dict = []
@@ -338,6 +342,6 @@ def main():
 	output = json.dumps(results_dict, indent=2)
 
 	log(output)
-	with open(OUTPUT, "w") as f:
+	with open(JSON, "w") as f:
 		f.write(output)
 main()
