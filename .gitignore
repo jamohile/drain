@@ -2,3 +2,6 @@ build/
 m5out
 results/
 *.pyc
+outputs
+results_sat_thrpt
+64c
