@@ -8,16 +8,18 @@ import json
 import multiprocessing
 import signal
 
-binary = 'build/Garnet_standalone/gem5.opt'
-simulator = 'configs/example/garnet_synth_traffic.py'
+BINARY = 'build/Garnet_standalone/gem5.opt'
+SIMULATOR = 'configs/example/garnet_synth_traffic.py'
+OUTPUT = "./result"
+LOGS = os.path.join(OUTPUT, "log.log")
+RESULTS = os.path.join(OUTPUT, "results")
 
-shared_log = "./log.log"
 log_lock = multiprocessing.Lock()
 
 def log(text):
 	log_lock.acquire()
 
-	with open(shared_log, 'a') as f:
+	with open(LOGS, 'a') as f:
 		f.write(text + '\n')
 
 	log_lock.release()
@@ -175,7 +177,7 @@ class Experiment:
 			worker_log("starting")
 
 			# Run simulator with provided configuration.
-			subprocess.call([binary, "-d", output_dir, simulator] + self.get_flags(injection_rate))
+			subprocess.call([BINARY, "-d", output_dir, SIMULATOR] + self.get_flags(injection_rate))
 
 			# Scan through the simulator's output, to specificially find the average flit latency.
 			_, packet_latency = subprocess.check_output([
@@ -301,14 +303,15 @@ def run_experiment(experiment):
 
 def main():
 	# Build simulator.
-	# os.system("scons -j15 {}".format(binary))
+	# os.system("scons -j15 {}".format(BINARY))
 
 	# Clean up any leftover outputs.
-	subprocess.call("rm ./log.log", shell=True)
-	subprocess.call('rm -rf ./results', shell=True)
-	subprocess.call('mkdir results', shell=True)
+	subprocess.call("rm -rf %s" % OUTPUT, shell=True)
 
-	simulation_config = SimulationConfiguration(output_dir="./results", max_packet_latency=200.0)
+	subprocess.call("mkdir %s" % OUTPUT, shell=True)
+	subprocess.call('mkdir %s' % RESULTS, shell=True)
+
+	simulation_config = SimulationConfiguration(output_dir=RESULTS, max_packet_latency=200.0)
 
 	# Prepare experiments.
 	experiments = []
@@ -332,7 +335,9 @@ def main():
 			"experiment": experiment.toDict(),
 			"results": [m.toDict() for m in measurements]
 		})
+	output = json.dumps(results_dict, indent=2)
 
-	log(json.dumps(results_dict, indent=2))
-
+	log(output)
+	with open(OUTPUT, "w") as f:
+		f.write(output)
 main()
