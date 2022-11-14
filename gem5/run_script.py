@@ -47,6 +47,22 @@ class NetworkConfiguration:
 		self.routing_algorithm = routing_algorithm
 		self.spin_freq = spin_freq
 
+class SoftwareConfiguration:
+	"""
+	A single instance of software that will be tested against the network.
+	"""
+	def __init__(self, benchmark, cycles):
+		self.benchmark = benchmark
+		self.cycles = cycles
+
+class SimulationConfiguration:
+	"""
+	Defines the meta-level configuration of this simulation.
+	"""
+	def __init__(self, output_dir, max_packet_latency):
+		self.output_dir = output_dir
+		self.max_packet_latency = max_packet_latency
+
 
 class Measurement:
 	"""
@@ -65,12 +81,10 @@ class Experiment:
 	While running an experiment, packet latencies are collection across increasing injection rates.
 	"""
 
-	def __init__(self, network_config, benchmark, cycles, root_output_dir, maximum_packet_latency):
+	def __init__(self, network_config, software_config, simulation_config):
 		self.network_config = network_config
-		self.benchmark = benchmark
-		self.cycles = cycles
-		self.root_output_dir = root_output_dir
-		self.maximum_packet_latency = maximum_packet_latency
+		self.software_config = software_config
+		self.simulation_config = simulation_config
 
 	def get_flags(self, injection_rate):
 		return [
@@ -91,8 +105,8 @@ class Experiment:
 
 			# Basic simulation behaviour.
 			# The simulated traffic to use, and the length of that traffic to simulate.
-			"--synthetic=" 						+ self.benchmark,
-			"--sim-cycles=%d" 				% self.cycles,
+			"--synthetic=" 						+ self.software_config.benchmark,
+			"--sim-cycles=%d" 				% self.software_config.cycles,
 
 			# Drain is built on top of SPIN.
 			# Enable spin every freq cycles.
@@ -110,10 +124,10 @@ class Experiment:
 		
 	def get_output_dir(self, injection_rate):
 		return os.path.join(
-			self.root_output_dir,
+			self.simulation_config.output_dir,
 			"%s" % self.network_config.num_cores,
 			self.network_config.routing_algorithm.name,
-			self.benchmark.upper(),
+			self.software_config.benchmark.upper(),
 			"freq-%d" 			% self.network_config.spin_freq,
 			"vc-%d" 				% self.network_config.virtual_channels,
 			"inj-%1.2f" 		% injection_rate
@@ -154,9 +168,11 @@ class Experiment:
 		measurements_queue = manager.Queue()
 
 		def worker(injection_rate):
-			log("Experiment: %s -> starting worker %1.2f" % (self.name(), injection_rate))
+			def worker_log(message):
+				self.log("worker %1.2f -> %s" % (injection_rate, message))
 
 			output_dir = self.get_output_dir(injection_rate)
+			worker_log("starting")
 
 			# Run simulator with provided configuration.
 			subprocess.call([binary, "-d", output_dir, simulator] + self.get_flags(injection_rate))
@@ -169,10 +185,10 @@ class Experiment:
 			
 			measurements_queue.put(Measurement(injection_rate, packet_latency))
 
-			if packet_latency > self.maximum_packet_latency:
+			worker_log("done, with latency %f" % packet_latency)
+			if packet_latency > self.simulation_config.max_packet_latency:
 				done.set()
-				log("Experiment: %s -> reached latency limit with worker %1.2f" % (self.name(), injection_rate))
-			log("Experiment: %s -> done worker %1.2f with latency: %f" % (self.name(), injection_rate, packet_latency))
+				worker_log("reached latency limit")
 
 			# TODO: this may already be threadsafe.
 			lock.acquire()
@@ -195,7 +211,9 @@ class Experiment:
 			injection_rate = last_injection_rate
 
 			worker_process = multiprocessing.Process(target=worker, args=[injection_rate])
-			workers_dict[injection_rate] = len(workers_list)
+			worker_index = len(workers_list)
+
+			workers_dict[injection_rate] = worker_index
 			workers_list.append(worker_process)
 			
 			lock.release()
@@ -204,29 +222,27 @@ class Experiment:
 
 		# At this point, all meaningful work for this experiment is completed.
 		# But, there may still be speculative processes running.
-		log("Experiment: %s -> exited." % (self.name()))
+		self.log("exited")
 		
 		# TODO: only terminate higher rate stragglers.
 		# For now, we assume that the workers complete in order.
-		num_stragglers = 0
 		lock.acquire()
 
+		num_stragglers = len(workers_dict)
 		for straggler_index in workers_dict.values():
-			num_stragglers += 1;
-			log("Experiment: %s -> terminating worker %d." % (self.name(), straggler_index))
+			self.log("terminating worker number %d." % straggler_index)
 			workers_list[straggler_index].terminate()
-			log("Experiment: %s -> terminated worker %d." % (self.name(), straggler_index))
+			self.log("terminated worker number %d." % straggler_index)
 
 		lock.release()
 
-		log("Experiment: %s -> terminated %d stragglers." % (self.name(), num_stragglers))
+		self.log("terminated %d stragglers." % num_stragglers)
 
 		# Now, convert the measurements queue back into a normal list.
 		measurements_queue.put(None)
 		measurements = list(iter(measurements_queue.get, None))
 
-		log("Experiment: %s -> generated %d measurements." % (self.name(), len(measurements)))
-		log("Done experiment: %s" % self.name())
+		self.log("done. generated %d measurements." % len(measurements))
 		return measurements
 
 	def toDict(self):
@@ -237,7 +253,10 @@ class Experiment:
 		}
 	
 	def name(self):
-		return "cores-%d_benchmark-%s_vc-%d" % (self.network_config.num_cores, self.benchmark.upper(), self.network_config.virtual_channels)
+		return "cores-%d_benchmark-%s_vc-%d" % (self.network_config.num_cores, self.software_config.benchmark.upper(), self.network_config.virtual_channels)
+
+	def log(self, message):
+		log("Experiment: %s -> %s" % (self.name(), message))
 
 # A number of different routing algorithms are supported.
 # These correspond to the settings used within Gem5.
@@ -260,7 +279,6 @@ network_configurations = [
 		spin_freq=1024
 
 	),
-
 	NetworkConfiguration(
 		num_cores=256,
     num_rows=16,
@@ -272,9 +290,11 @@ network_configurations = [
 	)
 ]
 
-# Specific Gem5 benchmarks we are interested in testing against.
-# These can be changed, but must be valid.
-benchmarks=[ "bit_rotation", "shuffle", "transpose" ]
+software_configurations = [
+	SoftwareConfiguration(benchmark="bit_rotation", cycles=1e5),
+	SoftwareConfiguration(benchmark="shuffle", cycles=1e5),
+	SoftwareConfiguration(benchmark="transpose", cycles=1e5)
+]
 
 def run_experiment(experiment):
 	return experiment.run()
@@ -288,11 +308,13 @@ def main():
 	subprocess.call('rm -rf ./results', shell=True)
 	subprocess.call('mkdir results', shell=True)
 
+	simulation_config = SimulationConfiguration(output_dir="./results", max_packet_latency=200.0)
+
 	# Prepare experiments.
 	experiments = []
 	for network_config in network_configurations:
-		for benchmark in benchmarks:
-			experiments.append(Experiment(network_config, benchmark, cycles=1e5, root_output_dir="./results", maximum_packet_latency=200.0))
+		for software_config in software_configurations:
+			experiments.append(Experiment(network_config, software_config, simulation_config))
 	
 	# Run all experiments using multithreading.
 	# Note: this assumes that experiments do not try to write to the same location, or otherwise break independence.
