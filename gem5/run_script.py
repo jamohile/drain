@@ -1,6 +1,7 @@
 from cmath import exp
 from logging import root
 import os
+from re import M
 from struct import pack
 import subprocess
 import json
@@ -8,6 +9,19 @@ import multiprocessing
 import signal
 
 binary = 'build/Garnet_standalone/gem5.opt'
+simulator = 'configs/example/garnet_synth_traffic.py'
+
+shared_log = "./log.log"
+log_lock = multiprocessing.Lock()
+
+def log(text):
+	log_lock.acquire()
+
+	with open(shared_log, 'a') as f:
+		f.write(text + '\n')
+
+	log_lock.release()
+
 
 class RoutingAlgorithm:
 	"""
@@ -51,92 +65,179 @@ class Experiment:
 	While running an experiment, packet latencies are collection across increasing injection rates.
 	"""
 
-	def __init__(self, network_config, benchmark):
+	def __init__(self, network_config, benchmark, cycles, root_output_dir, maximum_packet_latency):
 		self.network_config = network_config
 		self.benchmark = benchmark
-		self.measurements = []
+		self.cycles = cycles
+		self.root_output_dir = root_output_dir
+		self.maximum_packet_latency = maximum_packet_latency
+
+	def get_flags(self, injection_rate):
+		return [
+			"--network=garnet2.0",
+
+			# Physical network topology.
+			"--topology=irregularMesh_XY",
+			"--num-cpus=%d" 					% self.network_config.num_cores,
+			"--num-dirs=%d"  					% self.network_config.num_cores,
+			"--mesh-rows=%d"  				% self.network_config.num_rows,
+			"--conf-file=" 						+ self.network_config.mesh_config,
+			
+			# Network-level configuration.
+			"--router-latency=1",
+			"--uTurn-crossbar=1",
+			"--vcs-per-vnet=%d" 			% self.network_config.virtual_channels,
+			"--routing-algorithm=%d" 	% self.network_config.routing_algorithm.key,
+
+			# Basic simulation behaviour.
+			# The simulated traffic to use, and the length of that traffic to simulate.
+			"--synthetic=" 						+ self.benchmark,
+			"--sim-cycles=%d" 				% self.cycles,
+
+			# Drain is built on top of SPIN.
+			# Enable spin every freq cycles.
+			"--spin=1",
+			"--spin-freq=%d" 					% self.network_config.spin_freq,
+			# Each spin epoch, this many spins will be performed.
+			"--spin-mult=1",
+			"--spin-file=" 						+ self.network_config.spin_config,
+
+			# "Indepedent" variable being tested.
+			# As we change this injection rate, we should see a change in the latency as the network approaches saturation.
+			"--inj-vnet=0",
+			"--injectionrate=%1.2f"		% injection_rate,
+		]
+		
+	def get_output_dir(self, injection_rate):
+		return os.path.join(
+			self.root_output_dir,
+			"%s" % self.network_config.num_cores,
+			self.network_config.routing_algorithm.name,
+			self.benchmark.upper(),
+			"freq-%d" 			% self.network_config.spin_freq,
+			"vc-%d" 				% self.network_config.virtual_channels,
+			"inj-%1.2f" 		% injection_rate
+		)
 	
-	def last_packet_latency(self):
-		if self.measurements:
-			return self.measurements[-1].packet_latency
-		else:
-			return 0
-	
-	def add_packet_latency(self, injection_rate, packet_latency):
-		self.measurements.append(Measurement(injection_rate, packet_latency))
+	def run(self):
+		log("Starting experiment: %s" % self.name())
 
-	def run(self, maximum_packet_latency, cycles, root_output_dir):
-			injection_rate = 0
+		# Make sure that this experiment can create more subprocesses.
+		curr_proc = multiprocessing.current_process()
+		curr_proc.daemon = False
 
-			while self.last_packet_latency() < maximum_packet_latency:
-				injection_rate += 0.02
+		manager = multiprocessing.Manager()
 
-				# Control flags for Gem5.
-				flags = [
-					"--network=garnet2.0",
+		# We don't know how many injection rates will be tried out.
+		# So, whenever a worker becomes available, it will try out a new rate.
+		# When the one finds that the experiment is complete, it will signal that to everyone.
+		last_injection_rate = 0
+		done = manager.Event()
 
-					# Physical network topology.
-					"--topology=irregularMesh_XY",
-					"--num-cpus=%d" 					% self.network_config.num_cores,
-					"--num-dirs=%d"  					% self.network_config.num_cores,
-					"--mesh-rows=%d"  				% self.network_config.num_rows,
-					"--conf-file=" 						+ self.network_config.mesh_config,
-					
-					# Network-level configuration.
-					"--router-latency=1",
-					"--uTurn-crossbar=1",
-					"--vcs-per-vnet=%d" 			% self.network_config.virtual_channels,
-					"--routing-algorithm=%d" 	% self.network_config.routing_algorithm.key,
+		# Since we do not know how many injection rates should be tried, any parallelism here is speculative.
+		# The penalty is that by running multiple at once, we may slow down others.
+		# So, we balance how far we speculate by limiting the number of workers.
+		workers = manager.Semaphore(5)
+		# Once a worker discovers we are done, we need to cancel any uncompleted speculation.
+		# To do this, we add all workers to a list as they are created, and pass their index to the workers themselves.
+		# In the dictionary, we map these indices to the actual worker process.
+		# When a worker completes, we simply unmap them from the dictionary.
+		# Then, at the end, any still-mapped workers can be terminated.
+		workers_list = []
+		workers_dict = manager.dict()
 
-					# Basic simulation behaviour.
-					# The simulated traffic to use, and the length of that traffic to simulate.
-					"--synthetic=" 						+ self.benchmark,
-					"--sim-cycles=%d" 				% cycles,
+		# Whenever the datastructures above are mutated, they must be access controlled.
+		# Exceptions are already thread-safe structures.
+		lock = manager.Lock()
 
-					# Drain is built on top of SPIN.
-					# Enable spin every freq cycles.
-					"--spin=1",
-					"--spin-freq=%d" 					% self.network_config.spin_freq,
-					# Each spin epoch, this many spins will be performed.
-					"--spin-mult=1",
-					"--spin-file=" 						+ self.network_config.spin_config,
+		# Completed results from each worker.
+		measurements_queue = manager.Queue()
 
-					# "Indepedent" variable being tested.
-					# As we change this injection rate, we should see a change in the latency as the network approaches saturation.
-					"--inj-vnet=0",
-					"--injectionrate=%1.2f"		% injection_rate,
-				]
+		def worker(injection_rate):
+			log("Experiment: %s -> starting worker %1.2f" % (self.name(), injection_rate))
 
-				output_dir = os.path.join(
-					root_output_dir,
-					"%s" % self.network_config.num_cores,
-					self.network_config.routing_algorithm.name,
-					self.benchmark.upper(),
-					"freq-%d" 			% self.network_config.spin_freq,
-					"vc-%d" 				% self.network_config.virtual_channels,
-					"inj-%1.2f" 		% injection_rate
-				)
+			output_dir = self.get_output_dir(injection_rate)
 
-				# Run simulator with provided configuration.
-				# The passed configs/ file is the actual gem5 network simulation that will be used,
-				# consuming the configuration and traffic we configured above.
-				subprocess.call([binary, "-d", output_dir, "configs/example/garnet_synth_traffic.py"] + flags)
+			# Run simulator with provided configuration.
+			subprocess.call([binary, "-d", output_dir, simulator] + self.get_flags(injection_rate))
 
-				# Scan through the simulator's output, to specificially find the average flit latency.
-				_, packet_latency = subprocess.check_output([
-					"grep", "system.ruby.network.average_flit_latency", os.path.join(output_dir, "stats.txt"),
-				]).split()
+			# Scan through the simulator's output, to specificially find the average flit latency.
+			_, packet_latency = subprocess.check_output([
+				"grep", "system.ruby.network.average_flit_latency", os.path.join(output_dir, "stats.txt"),
+			]).split()
+			packet_latency = float(packet_latency)
+			
+			measurements_queue.put(Measurement(injection_rate, packet_latency))
 
-				self.add_packet_latency(injection_rate, float(packet_latency))
+			if packet_latency > self.maximum_packet_latency:
+				done.set()
+				log("Experiment: %s -> reached latency limit with worker %1.2f" % (self.name(), injection_rate))
+			log("Experiment: %s -> done worker %1.2f with latency: %f" % (self.name(), injection_rate, packet_latency))
+
+			# TODO: this may already be threadsafe.
+			lock.acquire()
+			workers_dict.pop(injection_rate)
+			lock.release()
+			workers.release()
+
+    # Until we are done this experiment, keep dispatching workers.
+		while not done.is_set():
+			workers.acquire()
+
+			# It's possible that in the time it took us to acquire a worker, the experiment finished.
+			if done.is_set():
+				workers.release()
+				break
+
+			lock.acquire()
+
+			last_injection_rate += 0.02
+			injection_rate = last_injection_rate
+
+			worker_process = multiprocessing.Process(target=worker, args=[injection_rate])
+			workers_dict[injection_rate] = len(workers_list)
+			workers_list.append(worker_process)
+			
+			lock.release()
+			
+			worker_process.start()
+
+		# At this point, all meaningful work for this experiment is completed.
+		# But, there may still be speculative processes running.
+		log("Experiment: %s -> exited." % (self.name()))
+		
+		# TODO: only terminate higher rate stragglers.
+		# For now, we assume that the workers complete in order.
+		num_stragglers = 0
+		lock.acquire()
+
+		for straggler_index in workers_dict.values():
+			num_stragglers += 1;
+			log("Experiment: %s -> terminating worker %d." % (self.name(), straggler_index))
+			workers_list[straggler_index].terminate()
+			log("Experiment: %s -> terminated worker %d." % (self.name(), straggler_index))
+
+		lock.release()
+
+		log("Experiment: %s -> terminated %d stragglers." % (self.name(), num_stragglers))
+
+		# Now, convert the measurements queue back into a normal list.
+		measurements_queue.put(None)
+		measurements = list(iter(measurements_queue.get, None))
+
+		log("Experiment: %s -> generated %d measurements." % (self.name(), len(measurements)))
+		log("Done experiment: %s" % self.name())
+		return measurements
 
 	def toDict(self):
 		return {
 			"cores": self.network_config.num_cores,
 			"benchmark": self.benchmark.upper(),
 			"vc": self.network_config.virtual_channels,
-
-			"measurements": [m.toDict() for m in self.measurements]
 		}
+	
+	def name(self):
+		return "cores-%d_benchmark-%s_vc-%d" % (self.network_config.num_cores, self.benchmark.upper(), self.network_config.virtual_channels)
 
 # A number of different routing algorithms are supported.
 # These correspond to the settings used within Gem5.
@@ -176,14 +277,14 @@ network_configurations = [
 benchmarks=[ "bit_rotation", "shuffle", "transpose" ]
 
 def run_experiment(experiment):
-	experiment.run(maximum_packet_latency=200.0, cycles=1e5, root_output_dir="./results")
-	return experiment
+	return experiment.run()
 
 def main():
 	# Build simulator.
 	# os.system("scons -j15 {}".format(binary))
 
 	# Clean up any leftover outputs.
+	subprocess.call("rm ./log.log", shell=True)
 	subprocess.call('rm -rf ./results', shell=True)
 	subprocess.call('mkdir results', shell=True)
 
@@ -191,18 +292,25 @@ def main():
 	experiments = []
 	for network_config in network_configurations:
 		for benchmark in benchmarks:
-			experiments.append(Experiment(network_config, benchmark))
+			experiments.append(Experiment(network_config, benchmark, cycles=1e5, root_output_dir="./results", maximum_packet_latency=200.0))
 	
 	# Run all experiments using multithreading.
-	# Note, this is a bit messy, but it is up to the experiments to make sure they do not write to the same locations.
+	# Note: this assumes that experiments do not try to write to the same location, or otherwise break independence.
+	log("Starting experiments.")
 
 	pool = multiprocessing.Pool()
 	results = pool.map(run_experiment, experiments)
-	print("Done all experiments.")
 
-	print(results)
+	log("Done all experiments.")
 
 	# Print all results.
-	print(json.dumps([experiment.toDict() for experiment in experiments], indent=2))
+	results_dict = []
+	for experiment, measurements in zip(experiments, results):
+		results_dict.append({
+			"experiment": experiment.toDict(),
+			"results": [m.toDict() for m in measurements]
+		})
+
+	log(json.dumps(results_dict, indent=2))
 
 main()
