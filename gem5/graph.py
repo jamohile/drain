@@ -20,7 +20,7 @@ for experiment in data:
     latencies = [result["packet_latency"] for result in experiment["results"]]
 
     # Plot the injection rate vs latency data
-    ax.plot(injection_rates, latencies, label="{}-{}-{}".format(
+    ax.plot(injection_rates, latencies, "-x", markersize=4, label="{}-{}-{}".format(
         experiment['experiment']['benchmark'],
         experiment['experiment']['cores'],
         experiment['experiment']['vc']))
