@@ -64,9 +64,10 @@ class SimulationConfiguration:
 	"""
 	Defines the meta-level configuration of this simulation.
 	"""
-	def __init__(self, output_dir, max_packet_latency):
+	def __init__(self, output_dir, max_packet_latency, injection_rate_delta):
 		self.output_dir = output_dir
 		self.max_packet_latency = max_packet_latency
+		self.injection_rate_delta = injection_rate_delta
 
 
 class Measurement:
@@ -124,7 +125,8 @@ class Experiment:
 			# "Indepedent" variable being tested.
 			# As we change this injection rate, we should see a change in the latency as the network approaches saturation.
 			"--inj-vnet=0",
-			"--injectionrate=%1.2f"		% injection_rate,
+			"--injectionrate=%1.5f"		% injection_rate,
+			"--precision=6"
 		]
 		
 	def get_output_dir(self, injection_rate):
@@ -135,7 +137,7 @@ class Experiment:
 			self.software_config.benchmark.upper(),
 			"freq-%d" 			% self.network_config.spin_freq,
 			"vc-%d" 				% self.network_config.virtual_channels,
-			"inj-%1.2f" 		% injection_rate
+			"inj-%1.5f" 		% injection_rate
 		)
 	
 	def run(self):
@@ -174,7 +176,7 @@ class Experiment:
 
 		def worker(injection_rate):
 			def worker_log(message):
-				self.log("worker %1.2f -> %s" % (injection_rate, message))
+				self.log("worker %1.5f -> %s" % (injection_rate, message))
 
 			output_dir = self.get_output_dir(injection_rate)
 			worker_log("starting")
@@ -212,7 +214,8 @@ class Experiment:
 				lock.release()
 				break
 
-			last_injection_rate += 0.02
+			last_injection_rate += self.simulation_config.injection_rate_delta
+
 			injection_rate = last_injection_rate
 
 			worker_process = multiprocessing.Process(target=worker, args=[injection_rate])
@@ -317,7 +320,7 @@ def main():
 	subprocess.call("mkdir %s" % OUTPUT, shell=True)
 	subprocess.call('mkdir %s' % RESULTS, shell=True)
 
-	simulation_config = SimulationConfiguration(output_dir=RESULTS, max_packet_latency=200.0)
+	simulation_config = SimulationConfiguration(output_dir=RESULTS, max_packet_latency=200.0, injection_rate_delta=0.02)
 
 	# Prepare experiments.
 	experiments = []
