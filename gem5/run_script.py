@@ -236,7 +236,10 @@ class Experiment:
 		num_stragglers = len(workers_dict)
 		for straggler_index in workers_dict.values():
 			self.log("terminating worker number %d." % straggler_index)
+			# Terminating a process doesn't kill its children, so do so manually.
+			os.system("pkill -P %d" % workers_list[straggler_index].pid)
 			workers_list[straggler_index].terminate()
+
 			self.log("terminated worker number %d." % straggler_index)
 
 		lock.release()
