@@ -320,7 +320,7 @@ def main():
 	subprocess.call("mkdir %s" % OUTPUT, shell=True)
 	subprocess.call('mkdir %s' % RESULTS, shell=True)
 
-	simulation_config = SimulationConfiguration(output_dir=RESULTS, max_packet_latency=200.0, injection_rate_delta=0.02)
+	simulation_config = SimulationConfiguration(output_dir=RESULTS, max_packet_latency=200.0, injection_rate_delta=0.001)
 
 	# Prepare experiments.
 	experiments = []
