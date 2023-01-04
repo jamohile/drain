@@ -118,6 +118,21 @@ Router::wakeup()
         cout << "Router-id: " << m_id << " woke-up at cycle: " << curCycle() << endl;
     #endif
 
+    // DRAINO: Tune the drain period based on feedback.
+    // Compute aggregate flit latency across all VCs.
+    // For the time being, this uses network-level stats.
+    // TODO: use more realistic router-level information (note, given drain relies on no need for coordination, not super realistic.)
+    int aggregate_latency = 0;
+    int aggregate_flits = 0;
+
+    for (int i_vnet=0; i_vnet < m_virtual_networks; i_vnet++) {
+        aggregate_latency += get_net_ptr()->m_flit_network_latency[i_vnet].value();
+        aggregate_flits += get_net_ptr()->m_flits_received[i_vnet].value();
+    }
+
+    double average_flit_latency = (double) aggregate_latency / (double) aggregate_flits;
+    DPRINTF(RubyNetwork, "drano: average flit latency %f\n", average_flit_latency);
+
     // check for incoming flits
     for (int inport = 0; inport < m_input_unit.size(); inport++) {
         m_input_unit[inport]->wakeup();

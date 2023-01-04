@@ -431,10 +431,6 @@ class GarnetNetwork : public Network, public Consumer
     std::string ni_inj; // manner of injection of packets
                        // into network by NIC
 
-
-  protected:
-
-
     Stats::Vector m_marked_flt_dist;
     Stats::Vector m_flt_dist;
 
