@@ -64,10 +64,11 @@ class SimulationConfiguration:
 	"""
 	Defines the meta-level configuration of this simulation.
 	"""
-	def __init__(self, output_dir, max_packet_latency, injection_rate_delta):
+	def __init__(self, output_dir, max_packet_latency, injection_rate_delta, max_speculation):
 		self.output_dir = output_dir
 		self.max_packet_latency = max_packet_latency
 		self.injection_rate_delta = injection_rate_delta
+		self.max_speculation = max_speculation
 
 
 class Measurement:
@@ -158,7 +159,7 @@ class Experiment:
 		# Since we do not know how many injection rates should be tried, any parallelism here is speculative.
 		# The penalty is that by running multiple at once, we may slow down others.
 		# So, we balance how far we speculate by limiting the number of workers.
-		workers = manager.Semaphore(5)
+		workers = manager.Semaphore(self.simulation_config.max_speculation)
 		# Once a worker discovers we are done, we need to cancel any uncompleted speculation.
 		# To do this, we add all workers to a list as they are created, and pass their index to the workers themselves.
 		# In the dictionary, we map these indices to the actual worker process.
@@ -320,7 +321,7 @@ def main():
 	subprocess.call("mkdir %s" % OUTPUT, shell=True)
 	subprocess.call('mkdir %s' % RESULTS, shell=True)
 
-	simulation_config = SimulationConfiguration(output_dir=RESULTS, max_packet_latency=200.0, injection_rate_delta=0.001)
+	simulation_config = SimulationConfiguration(output_dir=RESULTS, max_packet_latency=200.0, injection_rate_delta=0.001, max_speculation=5)
 
 	# Prepare experiments.
 	experiments = []
