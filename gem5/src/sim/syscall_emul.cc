@@ -1165,7 +1165,7 @@ getdentsFunc(SyscallDesc *desc, int callnum, Process *p, ThreadContext *tc)
     int sim_fd = hbfdp->getSimFD();
 
     BufferArg buf_arg(buf_ptr, count);
-    auto status = syscall(SYS_getdents, sim_fd, buf_arg.bufferPtr(), count);
+    auto status = syscall(SYS_getdents64, sim_fd, buf_arg.bufferPtr(), count);
 
     if (status == -1)
         return -errno;
