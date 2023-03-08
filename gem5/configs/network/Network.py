@@ -133,7 +133,7 @@ def define_options(parser):
                       help="run draino every N drain cycles")
     parser.add_option("--draino-idle-cycles", type="int", default=10,
                       help="once in idle, draino will wait this many cycles before continuing.")
-    parser.add_option("--draino-latency-threshold", type="int", default=1,
+    parser.add_option("--draino-latency-threshold", type="float", default=1.0,
                       help="draino will not react to a change in latency less than this magnitude.")
 
 def create_network(options, ruby):

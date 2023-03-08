@@ -69,6 +69,18 @@ struct NetworkTraceRecord {
     int num_flits;
 };
 
+
+enum DrainoStates {
+  IDLE,
+  IDLE_LAST,
+  
+  INCREASE_SET,
+  INCREASE_TEST,
+
+  DECREASE_SET,
+  DECREASE_TEST,
+};
+
 class GarnetNetwork : public Network, public Consumer
 {
   public:
@@ -550,6 +562,33 @@ class GarnetNetwork : public Network, public Consumer
     int trace_num_flits_injected;
     int trace_num_flits_received; // number of trace flits received
     int trace_start_time; // time-stamp of first packet in trace
+
+
+    ///////////////////////
+    // DrainO Configuration
+    ///////////////////////
+
+    // Parameters
+    // An experiment must increase latency by this much to pause draino.
+    bool draino_active;
+    // How often to run draino, in terms of drain cycles.
+    int draino_freq;
+    // The minimum change in latency to trigger an update.
+    double draino_latency_threshold;
+    // Number of cycles to stay in the idle state.
+    int draino_idle_cycles;
+
+    // Runtime State
+    // Latency value at the state of the measurement period.
+    double draino_last_latency;
+    // Frequency before the current experiment.
+    int draino_previous_frequency = 0;
+    // Total cycles spent in idle, so far.
+    int draino_elapsed_idle_cycles = 0;
+    // Current state of the draino FSM.
+    DrainoStates draino_state;
+    // Type of the last experiment, used to alternate between them.
+    bool draino_last_increased = false;
 };
 
 inline std::ostream&
