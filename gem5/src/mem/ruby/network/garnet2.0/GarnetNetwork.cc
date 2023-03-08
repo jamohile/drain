@@ -40,6 +40,7 @@
 #include <fstream>
 
 #include "debug/RubyNetwork.hh"
+#include "debug/Draino.hh"
 
 #include "base/cast.hh"
 #include "base/stl_helpers.hh"
@@ -537,8 +538,8 @@ std::string drainoStateName(DrainoStates state) {
 
 void
 GarnetNetwork::wakeup() {
-    if (curCycle() % m_spin_thrshld == 0) {
-        DPRINTF(RubyNetwork, "DRAINO: start. State = %s, Frequency = %d\n", drainoStateName(draino_state), m_spin_thrshld);
+    if (true) {
+        DPRINTF(Draino, "Start. State = %s, Frequency = %d\n", drainoStateName(draino_state), m_spin_thrshld);
 
         // Compute aggregate flit latency across all VCs.
         // For the time being, this uses network-level stats.
@@ -552,7 +553,7 @@ GarnetNetwork::wakeup() {
         }
 
         double average_flit_latency = (double) aggregate_latency / (double) aggregate_flits;
-        DPRINTF(RubyNetwork, "DRAINO: average flit latency %f\n", average_flit_latency);
+        DPRINTF(Draino, "average flit latency %f\n", average_flit_latency);
         
         switch (draino_state) {
             case DrainoStates::IDLE:
@@ -574,7 +575,7 @@ GarnetNetwork::wakeup() {
                 }
                 break;
             case DrainoStates::INCREASE_SET:
-                DPRINTF(RubyNetwork, "DRAINO: increasing frequency.\n");
+                DPRINTF(Draino, "increasing frequency.\n");
                 draino_previous_frequency = m_spin_thrshld;
                 m_spin_thrshld = draino_previous_frequency * 2;
                 draino_last_latency = average_flit_latency;
@@ -582,17 +583,17 @@ GarnetNetwork::wakeup() {
                 break;
             case DrainoStates::INCREASE_TEST:
                 if (average_flit_latency - draino_last_latency > draino_latency_threshold) {
-                    DPRINTF(RubyNetwork, "DRAINO: average latency increased.\n");
+                    DPRINTF(Draino, "average latency increased.\n");
                     m_spin_thrshld = draino_previous_frequency;
                     draino_state = DrainoStates::IDLE;
                 } else {
-                    DPRINTF(RubyNetwork, "DRAINO: average latency decreased or level.\n");
+                    DPRINTF(Draino, "average latency decreased or level.\n");
                     draino_state = INCREASE_SET;
                 }
                 break;
 
             case DrainoStates::DECREASE_SET:
-                DPRINTF(RubyNetwork, "DRAINO: decreasing frequency.\n");
+                DPRINTF(Draino, "decreasing frequency.\n");
                 if (m_spin_thrshld <= 4) {
                     draino_state = DrainoStates::IDLE;
                     break;
@@ -604,17 +605,17 @@ GarnetNetwork::wakeup() {
                 break;
             case DrainoStates::DECREASE_TEST:
                 if (average_flit_latency - draino_last_latency > draino_latency_threshold) {
-                    DPRINTF(RubyNetwork, "DRAINO: average latency increased.\n");
+                    DPRINTF(Draino, "average latency increased.\n");
                     m_spin_thrshld = draino_previous_frequency;
                     draino_state = DrainoStates::IDLE;
                 } else {
-                    DPRINTF(RubyNetwork, "DRAINO: average latency decreased or level.\n");
+                    DPRINTF(Draino, "average latency decreased or level.\n");
                     draino_state = DECREASE_SET;
                 }
                 break;
         }
 
-        DPRINTF(RubyNetwork, "DRAINO: -----> %s\n", drainoStateName(draino_state));
+        DPRINTF(Draino, "-----> %s\n", drainoStateName(draino_state));
     }
 }
 

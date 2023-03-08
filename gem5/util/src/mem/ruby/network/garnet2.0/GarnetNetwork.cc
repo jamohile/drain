@@ -123,7 +123,7 @@ GarnetNetwork::GarnetNetwork(const Params *p)
         // assert(m_spin_mult != 0); // can be 0 for random number of spins..
         #if (DEBUG_PRINT)
             cout << "***********************************" << endl;
-            cout << "SPIN is enabled" << endl;
+            cout << "SPINY is enabled" << endl;
             cout << "SPIN-threshold is: " << m_spin_thrshld << endl;
             cout << "SPIN-Multiplicity is: " << m_spin_mult << endl;
             cout << "***********************************" << endl;

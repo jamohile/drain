@@ -227,6 +227,7 @@ def init_network(options, network, InterfaceClass):
       network.uTurn_crossbar = options.uTurn_crossbar
 
     if options.draino:
+      network.draino = options.draino
       assert(options.network == "garnet2.0")
       print "setting draino-freq: ", options.draino_freq
       network.draino_freq = options.draino_freq
