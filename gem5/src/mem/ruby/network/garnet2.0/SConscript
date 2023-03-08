@@ -51,3 +51,6 @@ Source('VirtualChannel.cc')
 Source('flitBuffer.cc')
 Source('flit.cc')
 Source('Credit.cc')
+
+# Draino 
+DebugFlag("Draino")
