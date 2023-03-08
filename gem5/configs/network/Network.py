@@ -125,6 +125,17 @@ def define_options(parser):
                       help="when set it will inject all packets ejected from \
                       protocol buffer into single vnet of the network")
 
+    # DrainO Parameters
+    parser.add_option("--draino", action="store_true",
+                      default=False,
+                      help="enable draino simulation")
+    parser.add_option("--draino-freq", type="int", default=5,
+                      help="run draino every N drain cycles")
+    parser.add_option("--draino-idle-cycles", type="int", default=10,
+                      help="once in idle, draino will wait this many cycles before continuing.")
+    parser.add_option("--draino-latency-threshold", type="int", default=1,
+                      help="draino will not react to a change in latency less than this magnitude.")
+
 def create_network(options, ruby):
 
     # Set the network classes based on the command line options
@@ -214,3 +225,12 @@ def init_network(options, network, InterfaceClass):
       assert(options.network == "garnet2.0")
       print "setting uTurn-crossbar: ", options.uTurn_crossbar
       network.uTurn_crossbar = options.uTurn_crossbar
+
+    if options.draino:
+      assert(options.network == "garnet2.0")
+      print "setting draino-freq: ", options.draino_freq
+      network.draino_freq = options.draino_freq
+      print "setting draino-idle-cycles: ", options.draino_idle_cycles
+      network.draino_idle_cycles = options.draino_idle_cycles
+      print "setting draino-latency-threshold: ", options.draino_latency_threshold
+      network.draino_latency_threshold = options.draino_latency_threshold

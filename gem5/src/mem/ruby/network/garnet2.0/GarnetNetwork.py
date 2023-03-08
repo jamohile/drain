@@ -71,6 +71,12 @@ class GarnetNetwork(RubyNetwork):
                       protocol buffer into single vnet of the network")
     spin_file = Param.String(Parent.spin_file,
 					"file path containing SPIN-ring information for DRAIN")
+    
+    # DrainO Parameters
+    draino = Param.Bool(False, "enable draino simulation")
+    draino_freq = Param.UInt32(5, "run draino every N drain cycles")
+    draino_idle_cycles = Param.UInt32(10, "once in idle, draino will wait this many cycles before continuing.")
+    draino_latency_threshold = Param.UInt32(1, "draino will not react to a change in latency less than this magnitude.")
 
 class GarnetNetworkInterface(ClockedObject):
     type = 'GarnetNetworkInterface'
